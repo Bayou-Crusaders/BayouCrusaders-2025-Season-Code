@@ -10,6 +10,13 @@
 #include "Telemetry.h"
 
 class RobotContainer {
+public:
+    subsystems::CommandSwerveDrivetrain drivetrain{TunerConstants::CreateDrivetrain()};
+
+    RobotContainer();
+
+    frc2::CommandPtr GetAutonomousCommand();
+
 private:
     units::meters_per_second_t MaxSpeed = TunerConstants::kSpeedAt12Volts; // kSpeedAt12Volts desired top speed
     units::radians_per_second_t MaxAngularRate = 0.75_tps; // 3/4 of a rotation per second max angular velocity
@@ -26,14 +33,5 @@ private:
     Telemetry logger{MaxSpeed};
 
     frc2::CommandXboxController joystick{0};
-
-public:
-    subsystems::CommandSwerveDrivetrain drivetrain{TunerConstants::CreateDrivetrain()};
-
-    RobotContainer();
-
-    frc2::CommandPtr GetAutonomousCommand();
-
-private:
     void ConfigureBindings();
 };
