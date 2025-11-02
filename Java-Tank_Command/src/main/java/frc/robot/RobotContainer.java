@@ -4,11 +4,11 @@
 
 package frc.robot;
 
-import frc.robot.Constants.OperatorConstants;
-import frc.robot.commands.Autos;
-import frc.robot.commands.ExampleCommand;
+import static frc.robot.Constants.OperatorConstants;
 import frc.robot.subsystems.DriveSubsystem;
+import frc.robot.subsystems.ArmSubsystem;
 import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.InstantCommand;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
 
@@ -31,6 +31,16 @@ public class RobotContainer {
   private final CommandXboxController m_driverController =
       new CommandXboxController(OperatorConstants.kDriverControllerPort);
 
+  private final Command arcadeDriveCommand = m_driveSubsystem.arcadeDriveCommand(
+      m_driverController.getLeftX(), 
+      m_driverController.getRightY()
+  );
+
+  private final Command tankDriveCommand = m_driveSubsystem.tankDriveCommand(
+      m_driverController.getLeftX(), 
+      m_driverController.getRightY()
+  );
+
   /** The container for the robot. Contains subsystems, IO devices, and commands. */
   public RobotContainer() {
     // Configure the trigger bindings
@@ -47,13 +57,18 @@ public class RobotContainer {
    * joysticks}.
    */
   private void configureBindings() {
-    // Schedule `ExampleCommand` when `exampleCondition` changes to `true`
-    new Trigger(m_driveSubsystem::exampleCondition)
-        .onTrue(new ExampleCommand(m_driveSubsystem));
+    
+    m_driverController.start().onTrue(
+      new InstantCommand(() -> 
+        m_driveSubsystem.setDefaultCommand(tankDriveCommand)
+      )
+    );
 
-    // Schedule `exampleMethodCommand` when the Xbox controller's B button is pressed,
-    // cancelling on release.
-    m_driverController.b().whileTrue(m_driveSubsystem.exampleMethodCommand());
+    m_driverController.back().onTrue(
+      new InstantCommand(() -> 
+        m_driveSubsystem.setDefaultCommand(arcadeDriveCommand)
+      )
+    );
   }
 
   /**
@@ -63,6 +78,6 @@ public class RobotContainer {
    */
   public Command getAutonomousCommand() {
     // An example command will be run in autonomous
-    return Autos.exampleAuto(m_driveSubsystem);
+    return null;
   }
 }

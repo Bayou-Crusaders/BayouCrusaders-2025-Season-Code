@@ -4,6 +4,8 @@
 
 package frc.robot;
 
+import edu.wpi.first.units.Units.*;
+
 /**
  * The Constants class provides a convenient place for teams to hold robot-wide numerical or boolean
  * constants. This class should not be used for any other purpose. All constants should be declared
@@ -19,5 +21,10 @@ public final class Constants {
     public static final int krightFollowId = 1;
     public static final int kleftLeadId = 2;
     public static final int kleftFollowId = 3;
+    public static final int karmId = 4;
+    public static final Voltage kG = 0;
+    public static final Voltage kS = 0;
+    public static final Voltage kV = 0;
+    public static final Voltage kA = 0;
   }
 }
