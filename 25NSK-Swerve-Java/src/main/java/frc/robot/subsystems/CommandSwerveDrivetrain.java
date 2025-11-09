@@ -9,10 +9,14 @@ import com.ctre.phoenix6.Utils;
 import com.ctre.phoenix6.swerve.SwerveDrivetrainConstants;
 import com.ctre.phoenix6.swerve.SwerveModuleConstants;
 import com.ctre.phoenix6.swerve.SwerveRequest;
+import com.ctre.phoenix6.swerve.SwerveDrivetrain;
 
 import edu.wpi.first.math.Matrix;
+import edu.wpi.first.math.estimator.SwerveDrivePoseEstimator;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Translation2d;
+import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
 import edu.wpi.first.math.numbers.N1;
 import edu.wpi.first.math.numbers.N3;
 import edu.wpi.first.wpilibj.DriverStation;
@@ -23,6 +27,13 @@ import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Subsystem;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 
+import com.pathplanner.lib.auto.AutoBuilder;
+import com.pathplanner.lib.config.RobotConfig;
+import com.pathplanner.lib.controllers.PPHolonomicDriveController;
+import com.pathplanner.lib.util.DriveFeedforwards;
+import com.pathplanner.lib.config.PIDConstants;
+
+
 import frc.robot.generated.TunerConstants.TunerSwerveDrivetrain;
 
 /**
@@ -30,6 +41,7 @@ import frc.robot.generated.TunerConstants.TunerSwerveDrivetrain;
  * Subsystem so it can easily be used in command-based projects.
  */
 public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Subsystem {
+    @SuppressWarnings("unused")
     private static final double kSimLoopPeriod = 0.005; // 5 ms
     private Notifier m_simNotifier = null;
     private double m_lastSimTime;
@@ -108,6 +120,12 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
     /* The SysId routine to test */
     private SysIdRoutine m_sysIdRoutineToApply = m_sysIdRoutineTranslation;
 
+
+    private SwerveDrivetrain.SwerveDriveState swerveState;
+    private RobotConfig config;
+    private DriveFeedforwards driveFeedforwards;
+    public SwerveDrivePoseEstimator m_poseEstimation;
+
     /**
      * Constructs a CTRE SwerveDrivetrain using the specified constants.
      * <p>
@@ -118,6 +136,7 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
      * @param drivetrainConstants   Drivetrain-wide constants for the swerve drive
      * @param modules               Constants for each specific module
      */
+    @SuppressWarnings("unused")
     public CommandSwerveDrivetrain(
         SwerveDrivetrainConstants drivetrainConstants,
         SwerveModuleConstants<?, ?, ?>... modules
@@ -125,6 +144,64 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
         super(drivetrainConstants, modules);
         if (Utils.isSimulation()) {
             startSimThread();
+        }
+
+        // Load the RobotConfig from the GUI settings. You should probably
+        // store this in your Constants file
+        try{
+            config = RobotConfig.fromGUISettings();
+        } catch (Exception e) {
+            // Handle exception as needed
+            e.printStackTrace();
+        }
+
+        // Configure AutoBuilder last
+        try{
+            AutoBuilder.configure(
+                () -> swerveState.Pose, // Robot pose supplier
+                pose -> this.resetPose(pose), // Method to reset odometry
+                () -> config.toChassisSpeeds(swerveState.ModuleStates), // ChassisSpeeds supplier. MUST BE ROBOT RELATIVE
+                (speeds, feedforwards) -> new SwerveRequest.ApplyRobotSpeeds()
+                .withSpeeds(speeds)
+                .withWheelForceFeedforwardsX(driveFeedforwards.robotRelativeForcesX())
+                .withWheelForceFeedforwardsY(driveFeedforwards.robotRelativeForcesY()), // Method that will drive the robot given ROBOT RELATIVE ChassisSpeeds.
+                new PPHolonomicDriveController( // PPHolonomicController is the built-in path following controller for holonomic drive trains
+                    new PIDConstants(5.0, 0.001, 0.0), // Translation PID Constants
+                    new PIDConstants(5.0, 0.001, 0.0) // Rotation PID Constants
+                ),
+                config, // The robot configuration, taken from the GUI settings
+                () -> {
+                    // Boolean supplier that controls when the path will be mirrored for the red alliance
+                    // This will flip the path being followed to the red side of the field.
+                    // THE ORIGIN WILL REMAIN ON THE BLUE SIDE
+
+                    var alliance = DriverStation.getAlliance();
+                    if (alliance.isPresent()) {
+                        return alliance.get() == DriverStation.Alliance.Red;
+                    }
+                    return false;
+                },
+                this // Reference to this subsystem to set requirements
+            );
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        // Constuct a kinematics object to do pose estimation
+        try{
+            SwerveDrivePoseEstimator m_poseEstimation = new SwerveDrivePoseEstimator(
+                new SwerveDriveKinematics(
+                    new Translation2d(0.19685, 0.2413), // Front Left Position in Meters
+                    new Translation2d(0.19685, -0.2413), // Front Right Position in Meters
+                    new Translation2d(-0.19685, 0.2413), // Back Left Position in Meters
+                    new Translation2d(-0.19685, -0.2413) // Back Right Position in Meters
+                ),
+                swerveState.Pose.getRotation(), // Rotation of the robot
+                swerveState.ModulePositions, // Array of module positions
+                swerveState.Pose // Starting robot pose (NEED TO UPDATE FOR VISION)
+            );
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
@@ -235,6 +312,7 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
                 m_hasAppliedOperatorPerspective = true;
             });
         }
+        m_poseEstimation.addVisionMeasurement(null, 0.02);
     }
 
     private void startSimThread() {
@@ -285,4 +363,7 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
     ) {
         super.addVisionMeasurement(visionRobotPoseMeters, Utils.fpgaToCurrentTime(timestampSeconds), visionMeasurementStdDevs);
     }
+
+
+
 }

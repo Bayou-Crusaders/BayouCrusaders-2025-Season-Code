@@ -1,71 +1,137 @@
+// Copyright (c) 2017-2018 FIRST. All Rights Reserved.
+// Open Source Software - may be modified and shared by FRC teams. The code
+// must be accompanied by the FIRST BSD license file in the root directory of
+// the project. 
+
+//@TODO: Create a Function that takes in current Velocity and Acceleration to return variable FeedForward Gains
+
 package frc.robot.subsystems;
 
-
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
-
-import edu.wpi.first.math.controller.ArmFeedforward;
-import edu.wpi.first.math.trajectory.TrapezoidProfile;
+import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.math.util.Units;
-import edu.wpi.first.math.controller.ProfiledPIDController;
 
-import com.revrobotics.spark.SparkMax;
+
+import com.revrobotics.RelativeEncoder;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
-import com.revrobotics.spark.SparkAbsoluteEncoder;
-import com.revrobotics.spark.config.*;
+import com.revrobotics.spark.SparkClosedLoopController;
+import com.revrobotics.spark.SparkMax;
+import com.revrobotics.spark.SparkBase.ControlType;
+import com.revrobotics.spark.SparkBase.PersistMode;
+import com.revrobotics.spark.SparkBase.ResetMode;
+import com.revrobotics.spark.config.SparkMaxConfig;
+import com.revrobotics.spark.config.ClosedLoopConfig.FeedbackSensor;
+import com.revrobotics.spark.ClosedLoopSlot;
+import com.revrobotics.spark.SparkClosedLoopController.ArbFFUnits;
 
-public class ArmSubsystem extends SubsystemBase{
-    private final SparkMax m_armMotor = new SparkMax(8, MotorType.kBrushless);
-    private final SparkAbsoluteEncoder m_encoder = m_armMotor.getAbsoluteEncoder();
-    public boolean m_homingComplete = false;
-    private final AbsoluteEncoderConfig config = new AbsoluteEncoderConfig();
+/**Class to interface a single jointed arm.*/
+public class ArmSubsystem extends SubsystemBase {
+    //Initilaze the variables
+    private SparkMax m_armMotor;
+    private SparkMaxConfig m_armConfig;
+    private SparkClosedLoopController m_closedLoopController;
+    private RelativeEncoder m_encoder;
 
-    private final ArmFeedforward m_armFeedforward = 
-        new ArmFeedforward(
-            0.0, 
-            0.0, 
-            0.0, 
-            0
-        );
-    private final TrapezoidProfile.Constraints m_armProfile = 
-        new TrapezoidProfile.Constraints(
-                Units.degreesToRadians(90),
-                Units.degreesToRadians(180)
+    private int karmId = 8;
+    private Double kG = 0.0;
+    private Double kS = 0.0;
+    private Double kV = 0.0;
+    private Double kA = 0.0;
+
+    /**Creates a new Arm Subsystem */
+    public ArmSubsystem() {
+        //Init the motor
+        m_armMotor = new SparkMax(karmId, MotorType.kBrushless);
+
+        //Get the ClosedLoopController
+        m_closedLoopController = m_armMotor.getClosedLoopController();
+        
+        //Get the Connected Encoder from the Neo
+        m_encoder = m_armMotor.getEncoder();
+
+        //Create a config object
+        m_armConfig = new SparkMaxConfig();
+
+        /**Use to change the conversion factor */
+        m_armConfig.encoder
+            .positionConversionFactor(1)
+            .velocityConversionFactor(1);
+
+        /**Applies closed loop configs to the arm config */
+        m_armConfig.closedLoop
+            //This is the sensor (encoder) that is providing feedback (current position) to the loop
+            .feedbackSensor(FeedbackSensor.kPrimaryEncoder)
+
+            //The 'p' term contributes to the control signal proportionally to the current position error. 
+            //Increasing 'p' will make the arm move faster to the setpoint. If the arm oscillates around the setpoint, decrease 'p'
+            .p(0.5) 
+
+            //The 'i' term contributes to the control signal by driving the total accumulated error to zero.
+            //Esentilly, keep it VERY SMALL (please)
+            .i(0)
+
+            //The 'd' term contributes to the control signal by driving the derivitive of the error to zero.
+            //Increasing 'd' will make the arm smoothly track a moving setpoint, but could also make the arm unstable, so be careful.
+            .d(0.001)
+
+            //For more detail in tuning P, I, D, and FF view: 
+            // https://docs.wpilib.org/en/stable/docs/software/advanced-controls/introduction/tuning-vertical-arm.html
+
+            //This is the min and max output the loop can give to the motor
+            .outputRange(-1, 1);
+
+        /**Applies MAXMotion configs to the arm config */
+        m_armConfig.closedLoop.maxMotion
+            .maxVelocity(500)
+            .maxAcceleration(100)
+            .allowedClosedLoopError(1);
+
+        /**Apply the arm config to the motor */
+        m_armMotor.configure(m_armConfig, ResetMode.kResetSafeParameters, PersistMode.kNoPersistParameters);
+        
+        SmartDashboard.setDefaultBoolean("Reset Encoder", false);
+    }
+
+        private Double ffEquation() {
+            //V=kG*cos(theta)+kS*sgn(theta)+kV*theta+kA*theta
+            return 
+                (kG * Math.cos(m_encoder.getPosition())) + 
+                (kS * Math.signum(m_encoder.getPosition())) + 
+                (kV * (m_encoder.getPosition())) + 
+                (kA * (m_encoder.getPosition()));
+        }
+
+        /**Use to go to an angle */
+        public Command goToAngle(float targetDegrees) {
+            return Commands.runOnce( //Runs this command once per call of function
+                () -> {
+                    m_closedLoopController.setReference(
+                        Units.degreesToRotations(targetDegrees), //Convert given degrees into rotations
+                        ControlType.kPosition, //Use position control
+                        ClosedLoopSlot.kSlot0, //Use Slot0 configs
+                        ffEquation(), //This will add an Arm feed forward calculation to the reference, which is highly encoraged for an arm
+                        ArbFFUnits.kVoltage
+                    );
+                }, 
+                this //Requires {@link this} subsystem
             );
-    private final ProfiledPIDController m_armPID = new ProfiledPIDController(
-        0.0,
-        0.0,
-        0.0,
-        m_armProfile
-    );
+        }
+        
+        /**Periodic method provided by {@link SubsystemBase}, which is scheduled every scheduler loop */
+        @Override
+        public void periodic() {
+            // Display encoder position and velocity
+            SmartDashboard.putNumber("Position", m_encoder.getPosition());
+            SmartDashboard.putNumber("Velocity", m_encoder.getVelocity());
 
-    public void stopMotor() {
-        m_armMotor.stopMotor();
-    }
-    public void setVoltage(float voltage) {
-        m_armMotor.setVoltage(voltage);
-    }
-    public void zeroEncoder(float offset) {
-        config.apply(config.zeroOffset(offset));
-    }
-    private double getAngleRadians() {
-        return Units.rotationsToRadians(m_encoder.getPosition());
-    }
-    public void goToAngle(double targetAngleDegrees) {
-        double targetAngleRadians = Units.degreesToRadians(targetAngleDegrees);
+            if (SmartDashboard.getBoolean("Reset Encoder", false)) {
+                // Reset the encoder position to 0
+                m_encoder.setPosition(0);
 
-        // Calculate the PID and feedforward outputs based on the current state and target
-        double pidOutput = m_armPID.calculate(getAngleRadians(), targetAngleRadians);
-
-        // We need the profiled velocity to accurately calculate the feedforward
-        // For simplicity here, we assume acceleration is near zero, and the profile handles velocity
-        double feedForwardVoltage = m_armFeedforward.calculate(
-            targetAngleRadians,
-            m_armPID.getSetpoint().velocity
-        );
-        m_armMotor.setVoltage(pidOutput + feedForwardVoltage);
+                SmartDashboard.putBoolean("Reset Encoder", false);
+                
+            }
+        }
     }
-    public boolean atSetpoint() {
-        return m_armPID.atSetpoint();
-    }
-
-}
