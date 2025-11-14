@@ -1,24 +1,39 @@
+package frc.robot.subsystems;
 // Copyright (c) FIRST and other WPILib contributors.
 // Open Source Software; you can modify and/or share it under the terms of
 // the WPILib BSD license file in the root directory of this project.
 
-package frc.robot.subsystems;
 
+
+import edu.wpi.first.math.util.Units;
+import edu.wpi.first.math.controller.SimpleMotorFeedforward;
+import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.kinematics.ChassisSpeeds;
+import edu.wpi.first.math.kinematics.DifferentialDriveKinematics;
+import edu.wpi.first.math.kinematics.DifferentialDriveWheelSpeeds;
+import edu.wpi.first.wpilibj.sysid.SysIdRoutineLog;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import edu.wpi.first.wpilibj2.command.sysid.*;
+import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.*;
+import edu.wpi.first.units.measure.Voltage;
 
 import com.revrobotics.spark.*;
+import com.revrobotics.spark.SparkBase.ControlType;
 import com.revrobotics.spark.SparkBase.PersistMode;
 import com.revrobotics.spark.SparkBase.ResetMode;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
+import com.revrobotics.spark.config.ClosedLoopConfig.FeedbackSensor;
 import com.revrobotics.spark.config.SparkMaxConfig;
+import com.revrobotics.AbsoluteEncoder;
 
 /**
  * Class that can interface with a differental drivechain
  */
+@SuppressWarnings({"unused", "resource"})
 public class DriveSubsystem extends SubsystemBase {
-  /** Creates a new Drive Subsystem. */
 
   //Initilaze variables
   private int krightLeadId;
@@ -29,6 +44,31 @@ public class DriveSubsystem extends SubsystemBase {
   private SparkMax m_leftLead;
   private SparkMaxConfig krightConfig;
   private SparkMaxConfig kleftConfig;
+  private SparkMaxConfig kglobalConfig;
+  private AbsoluteEncoder m_rightEncoder;
+  private AbsoluteEncoder m_leftEncoder;
+  private SparkClosedLoopController m_rightController;
+  private SparkClosedLoopController m_leftController;
+
+  private final SysIdRoutine routine = new SysIdRoutine(
+    new SysIdRoutine.Config(),
+    new SysIdRoutine.Mechanism(
+      (Voltage voltage) -> voltageDrive(voltage), 
+      (SysIdRoutineLog log) -> new SysIdRoutineLog("Drive_Log"), 
+      this)
+  );
+
+  private final DifferentialDriveKinematics m_kinematics = new DifferentialDriveKinematics(
+    Units.inchesToMeters(18)
+  );
+
+  private final SimpleMotorFeedforward m_feedForward = new SimpleMotorFeedforward(
+    0.0,
+    0.0,
+    0.0
+  );
+
+  Pose2d pose = new Pose2d(0.0, 0.0, new Rotation2d(0.0));
 
   /**
    * Use if one motor per side 
@@ -38,8 +78,8 @@ public class DriveSubsystem extends SubsystemBase {
   */
   public DriveSubsystem(int krightId, int kleftId) {
     //Initilaze the two SPARKMax motors
-    final SparkMax m_rightLead = new SparkMax(krightLeadId, MotorType.kBrushed);
-    final SparkMax m_leftLead = new SparkMax(kleftLeadId, MotorType.kBrushed);
+    final SparkMax m_rightLead = new SparkMax(krightId, MotorType.kBrushed);
+    final SparkMax m_leftLead = new SparkMax(kleftId, MotorType.kBrushed);
   }
   
   /**
@@ -57,17 +97,36 @@ public class DriveSubsystem extends SubsystemBase {
     final SparkMax m_leftLead = new SparkMax(kleftLeadId, MotorType.kBrushed);
     final SparkMax m_leftFollow = new SparkMax(kleftFollowId, MotorType.kBrushed);
 
-    //Create the configs for the follow motors
-    final SparkMaxConfig krightConfig = new SparkMaxConfig();
-    final SparkMaxConfig kleftConfig = new SparkMaxConfig();
-    
-    //Makes the motors follow another motor
-    krightConfig.follow(krightLeadId);
-    kleftConfig.follow(kleftLeadId);
+    final SparkClosedLoopController m_rightController = m_rightLead.getClosedLoopController();
+    final SparkClosedLoopController m_leftController = m_leftLead.getClosedLoopController();
 
-    //Apply the configs to the follow motors
-    m_rightFollow.configure(krightConfig, ResetMode.kResetSafeParameters, PersistMode.kNoPersistParameters);
-    m_leftFollow.configure(kleftConfig, ResetMode.kResetSafeParameters, PersistMode.kNoPersistParameters);
+    // Create the configs for the motors
+    final SparkMaxConfig krightFollowConfig = new SparkMaxConfig();
+    final SparkMaxConfig kleftFollowConfig = new SparkMaxConfig();
+    final SparkMaxConfig kglobalConfig = new SparkMaxConfig();
+    final SparkMaxConfig krightConfig = new SparkMaxConfig();
+    
+    // Makes the motors follow another motor
+    krightFollowConfig.follow(krightLeadId);
+    kleftFollowConfig.follow(kleftLeadId);
+
+    // Sets the Closed Loop configs for the motors
+    kglobalConfig.closedLoop
+    .feedbackSensor(FeedbackSensor.kAbsoluteEncoder)
+    .pid(1.0, 0.0, 0.01, ClosedLoopSlot.kSlot0)
+    .outputRange(-1, 1);
+
+    krightConfig
+    .apply(kglobalConfig)
+    .inverted(true);
+
+    // Apply the configs to the follow motors
+    m_rightFollow.configure(krightFollowConfig, ResetMode.kResetSafeParameters, PersistMode.kNoPersistParameters);
+    m_leftFollow.configure(kleftFollowConfig, ResetMode.kResetSafeParameters, PersistMode.kNoPersistParameters);
+    
+    // Applies the global config to both lead motors
+    m_rightLead.configure(krightConfig, ResetMode.kResetSafeParameters, PersistMode.kNoPersistParameters);
+    m_leftLead.configure(kglobalConfig, ResetMode.kResetSafeParameters, PersistMode.kNoPersistParameters);
   }
 
   /**
@@ -83,8 +142,17 @@ public class DriveSubsystem extends SubsystemBase {
     // Subsystem::RunOnce implicitly requires `this` subsystem.
     return Commands.runOnce(
       () -> {
-        m_leftLead.setVoltage(leftSpeed * 12);
-        m_rightLead.setVoltage(rightSpeed * 12);
+        m_leftController.setReference(
+          leftSpeed, 
+          ControlType.kVelocity, 
+          ClosedLoopSlot.kSlot0,
+          m_feedForward.calculate(leftSpeed));
+
+        m_rightController.setReference(
+          rightSpeed, 
+          ControlType.kVelocity, 
+          ClosedLoopSlot.kSlot0,
+          m_feedForward.calculate(rightSpeed));
       },
       this
     );
@@ -93,20 +161,52 @@ public class DriveSubsystem extends SubsystemBase {
   /**
    * Drive using Arcade-Style Commands
    *
-   * @param speed Speed in the forward/backward plane, 1 = 100% Speed
-   * @param rot Speed to rotate in the x/y plane, 1 = 100% Speed
+   * @param speed Speed in the forward/backward plane, 1 = 1m/s
+   * @param rot Speed to rotate in the x/y plane, 1 = 1rad/s
    * 
    * @return A command to run
    */
   public Command arcadeDriveCommand(double speed, double rot) {
     // Inline construction of command goes here.
     // Subsystem::RunOnce implicitly requires `this` subsystem.
+    DifferentialDriveWheelSpeeds wheelSpeeds = m_kinematics.toWheelSpeeds(new ChassisSpeeds(speed, 0.0, rot));
+    
     return Commands.runOnce(
         () -> {
-          m_leftLead.setVoltage((speed + rot) * 12);
-          m_rightLead.setVoltage((speed - rot) * 12);
+          m_leftController.setReference(
+            wheelSpeeds.leftMetersPerSecond, 
+            ControlType.kVelocity,
+            ClosedLoopSlot.kSlot0,
+            m_feedForward.calculate(wheelSpeeds.leftMetersPerSecond));
+
+          m_rightController.setReference(
+            wheelSpeeds.rightMetersPerSecond, 
+            ControlType.kVelocity,
+            ClosedLoopSlot.kSlot0,
+            m_feedForward.calculate(wheelSpeeds.rightMetersPerSecond));
         },
         this
     );
+  }
+ 
+ /**
+  * Drive the robot using pure Voltage, used by SysId
+  * 
+  * @param voltage Voltage provided by a SysId Routine
+  * 
+  * @return A command to run
+  */
+  private Command voltageDrive(Voltage voltage) {
+    return Commands.run(
+      () -> {
+        m_leftLead.setVoltage(voltage);
+        m_rightLead.setVoltage(voltage);
+      }
+    );
+  }
+
+  @Override
+  public void periodic() {
+    
   }
 }

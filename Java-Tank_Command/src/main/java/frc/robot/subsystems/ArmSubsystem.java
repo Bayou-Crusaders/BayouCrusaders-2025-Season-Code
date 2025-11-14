@@ -13,6 +13,7 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
+import edu.wpi.first.math.controller.ArmFeedforward;
 import edu.wpi.first.math.util.Units;
 
 
@@ -26,7 +27,6 @@ import com.revrobotics.spark.SparkBase.ResetMode;
 import com.revrobotics.spark.config.SparkMaxConfig;
 import com.revrobotics.spark.config.ClosedLoopConfig.FeedbackSensor;
 import com.revrobotics.spark.ClosedLoopSlot;
-import com.revrobotics.spark.SparkClosedLoopController.ArbFFUnits;
 
 /**Class to interface a single jointed arm.*/
 public class ArmSubsystem extends SubsystemBase {
@@ -34,6 +34,7 @@ public class ArmSubsystem extends SubsystemBase {
     private SparkMax m_armMotor;
     private SparkMaxConfig m_armConfig;
     private SparkClosedLoopController m_closedLoopController;
+    private ArmFeedforward m_feedforward;
     private RelativeEncoder m_encoder;
 
     /**Creates a new Arm Subsystem */
@@ -43,6 +44,14 @@ public class ArmSubsystem extends SubsystemBase {
 
         //Get the ClosedLoopController
         m_closedLoopController = m_armMotor.getClosedLoopController();
+
+        // Create a feedforward object
+        m_feedforward = new ArmFeedforward(
+            OperatorConstants.kS,
+            OperatorConstants.kG,
+            OperatorConstants.kV,
+            OperatorConstants.kA
+        );
         
         //Get the Connected Encoder from the Neo
         m_encoder = m_armMotor.getEncoder();
@@ -75,7 +84,7 @@ public class ArmSubsystem extends SubsystemBase {
             //For more detail in tuning P, I, D, and FF view: 
             // https://docs.wpilib.org/en/stable/docs/software/advanced-controls/introduction/tuning-vertical-arm.html
 
-            //This is the min and max output the loop can give to the motor
+            //This is the minimum and maximum output the loop can give to the motor
             .outputRange(-1, 1);
 
         /**Applies MAXMotion configs to the arm config */
@@ -90,11 +99,6 @@ public class ArmSubsystem extends SubsystemBase {
         SmartDashboard.setDefaultBoolean("Reset Encoder", false);
     }
 
-        private Double ffEquation() {
-            //V=kG*cos(theta)+kS*sgn(theta)+kV*theta+kA*theta
-
-        }
-
         /**Use to go to an angle */
         public Command goToAngle(float targetDegrees) {
             return Commands.runOnce( //Runs this command once per call of function
@@ -103,11 +107,10 @@ public class ArmSubsystem extends SubsystemBase {
                         Units.degreesToRotations(targetDegrees), //Convert given degrees into rotations
                         ControlType.kPosition, //Use position control
                         ClosedLoopSlot.kSlot0, //Use Slot0 configs
-                        ffEquation(), //This will add an Arm feed forward calculation to the reference, which is highly encoraged for an arm
-                        ArbFFUnits.kVoltage
+                        m_feedforward.calculate(Units.degreesToRadians(targetDegrees), m_encoder.getVelocity()) //This will add an Arm feed forward calculation to the reference, which is highly encoraged for an arm
                     );
                 }, 
-                this //Requires {@link this} subsystem
+                this // Command requires this subsystem
             );
         }
         
