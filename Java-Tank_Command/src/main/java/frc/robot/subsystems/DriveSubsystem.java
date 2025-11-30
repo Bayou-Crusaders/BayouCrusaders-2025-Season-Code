@@ -5,34 +5,33 @@ package frc.robot.subsystems;
 
 
 
-import edu.wpi.first.math.util.Units;
-import edu.wpi.first.math.controller.SimpleMotorFeedforward;
-import edu.wpi.first.math.geometry.Pose2d;
-import edu.wpi.first.math.geometry.Rotation2d;
-import edu.wpi.first.math.kinematics.ChassisSpeeds;
-import edu.wpi.first.math.kinematics.DifferentialDriveKinematics;
-import edu.wpi.first.math.kinematics.DifferentialDriveWheelSpeeds;
-import edu.wpi.first.wpilibj.sysid.SysIdRoutineLog;
-import edu.wpi.first.wpilibj2.command.Command;
-import edu.wpi.first.wpilibj2.command.Commands;
-import edu.wpi.first.wpilibj2.command.SubsystemBase;
-import edu.wpi.first.wpilibj2.command.sysid.*;
-import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.*;
-import edu.wpi.first.units.measure.Voltage;
+import edu.wpi.first.math.util.Units; // Provides functions to convert units
+import edu.wpi.first.math.controller.SimpleMotorFeedforward; // Provides a Class to compute Feedforwards for a simple motor setup
+import edu.wpi.first.math.geometry.Pose2d; // Provides a Class to use poses (sets of cooridinates) on a 2d plane
+import edu.wpi.first.math.geometry.Rotation2d; // 
+import edu.wpi.first.math.kinematics.ChassisSpeeds; // 
+import edu.wpi.first.math.kinematics.DifferentialDriveKinematics; // 
+import edu.wpi.first.math.kinematics.DifferentialDriveWheelSpeeds; // 
+import edu.wpi.first.wpilibj.sysid.SysIdRoutineLog; // 
+import edu.wpi.first.wpilibj2.command.Command; // 
+import edu.wpi.first.wpilibj2.command.Commands; // 
+import edu.wpi.first.wpilibj2.command.SubsystemBase; // 
+import edu.wpi.first.wpilibj2.command.sysid.*; // 
+import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.*; // 
+import edu.wpi.first.units.measure.Voltage; // 
 
-import com.revrobotics.spark.*;
-import com.revrobotics.spark.SparkBase.ControlType;
-import com.revrobotics.spark.SparkBase.PersistMode;
-import com.revrobotics.spark.SparkBase.ResetMode;
-import com.revrobotics.spark.SparkLowLevel.MotorType;
-import com.revrobotics.spark.config.ClosedLoopConfig.FeedbackSensor;
-import com.revrobotics.spark.config.SparkMaxConfig;
-import com.revrobotics.AbsoluteEncoder;
+import com.revrobotics.spark.*; // 
+import com.revrobotics.spark.SparkBase.ControlType; // 
+import com.revrobotics.spark.SparkBase.PersistMode; // 
+import com.revrobotics.spark.SparkBase.ResetMode; // 
+import com.revrobotics.spark.SparkLowLevel.MotorType; // 
+import com.revrobotics.spark.config.ClosedLoopConfig.FeedbackSensor; // 
+import com.revrobotics.spark.config.SparkMaxConfig; // 
+import com.revrobotics.AbsoluteEncoder; // 
 
 /**
  * Class that can interface with a differental drivechain
  */
-@SuppressWarnings({"unused", "resource"})
 public class DriveSubsystem extends SubsystemBase {
 
   //Initilaze variables
@@ -53,8 +52,8 @@ public class DriveSubsystem extends SubsystemBase {
   private final SysIdRoutine routine = new SysIdRoutine(
     new SysIdRoutine.Config(),
     new SysIdRoutine.Mechanism(
-      (Voltage voltage) -> voltageDrive(voltage), 
-      (SysIdRoutineLog log) -> new SysIdRoutineLog("Drive_Log"), 
+      (voltage) -> voltageDrive(voltage), 
+      (log) -> new SysIdRoutineLog(log), 
       this)
   );
 
