@@ -20,6 +20,8 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.util.Color;
 import edu.wpi.first.wpilibj.util.Color8Bit;
 
+import frc.robot.subsystems.Targeting;
+
 public class Telemetry {
     private final double MaxSpeed;
 
@@ -28,7 +30,7 @@ public class Telemetry {
      * 
      * @param maxSpeed Maximum speed in meters per second
      */
-    public Telemetry(double maxSpeed) {
+    public Telemetry(double maxSpeed, Targeting Targeting) {
         MaxSpeed = maxSpeed;
         SignalLogger.start();
 
@@ -112,6 +114,9 @@ public class Telemetry {
         SignalLogger.writeDoubleArray("DriveState/ModuleStates", m_moduleStatesArray);
         SignalLogger.writeDoubleArray("DriveState/ModuleTargets", m_moduleTargetsArray);
         SignalLogger.writeDouble("DriveState/OdometryPeriod", state.OdometryPeriod, "seconds");
+
+        m_targetPose[0] = 
+        SignalLogger.writeDoubleArray("Targeting/TargetPose", )
 
         /* Telemeterize the pose to a Field2d */
         fieldTypePub.set("Field2d");

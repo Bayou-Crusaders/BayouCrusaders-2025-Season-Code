@@ -1,12 +1,11 @@
 package frc.robot.subsystems;
 
-import static edu.wpi.first.units.Units.*;
-
 import java.util.function.Supplier;
 
 import com.ctre.phoenix6.SignalLogger;
 import com.ctre.phoenix6.Utils;
 import com.ctre.phoenix6.swerve.SwerveDrivetrainConstants;
+import com.ctre.phoenix6.swerve.SwerveModule.DriveRequestType;
 import com.ctre.phoenix6.swerve.SwerveModuleConstants;
 import com.ctre.phoenix6.swerve.SwerveRequest;
 import com.ctre.phoenix6.swerve.SwerveDrivetrain;
@@ -30,11 +29,9 @@ import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.config.RobotConfig;
 import com.pathplanner.lib.controllers.PPHolonomicDriveController;
-import com.pathplanner.lib.util.DriveFeedforwards;
 import com.pathplanner.lib.config.PIDConstants;
 
-
-import frc.robot.generated.TunerConstants.TunerSwerveDrivetrain;
+import frc.robot.generated.TunerConstants.*;
 
 /**
  * Class that extends the Phoenix 6 SwerveDrivetrain class and implements
@@ -120,10 +117,11 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
     private SysIdRoutine m_sysIdRoutineToApply = m_sysIdRoutineTranslation;
 
 
-    private SwerveDrivetrain.SwerveDriveState swerveState;
+    private SwerveDrivetrain.SwerveDriveState swerveState = new SwerveDriveState();
+    private SwerveControlParameters robotState = new SwerveControlParameters();
     private RobotConfig config;
-    private DriveFeedforwards driveFeedforwards;
     public SwerveDrivePoseEstimator m_poseEstimation;
+    
 
     /**
      * Constructs a CTRE SwerveDrivetrain using the specified constants.
@@ -135,7 +133,6 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
      * @param drivetrainConstants   Drivetrain-wide constants for the swerve drive
      * @param modules               Constants for each specific module
      */
-    @SuppressWarnings("unused")
     public CommandSwerveDrivetrain(
         SwerveDrivetrainConstants drivetrainConstants,
         SwerveModuleConstants<?, ?, ?>... modules
@@ -154,16 +151,18 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
             e.printStackTrace();
         }
 
+        final SwerveRequest.FieldCentric pathDrive = new SwerveRequest.FieldCentric()
+            .withDriveRequestType(DriveRequestType.OpenLoopVoltage); // Use open-loop control for drive motors
         // Configure AutoBuilder last
         try{
             AutoBuilder.configure(
-                () -> swerveState.Pose, // Robot pose supplier
+                () -> robotState.currentPose, // Robot pose supplier
                 pose -> this.resetPose(pose), // Method to reset odometry
-                () -> config.toChassisSpeeds(swerveState.ModuleStates), // ChassisSpeeds supplier. MUST BE ROBOT RELATIVE
-                (speeds, feedforwards) -> new SwerveRequest.ApplyRobotSpeeds()
-                .withSpeeds(speeds)
-                .withWheelForceFeedforwardsX(driveFeedforwards.robotRelativeForcesX())
-                .withWheelForceFeedforwardsY(driveFeedforwards.robotRelativeForcesY()), // Method that will drive the robot given ROBOT RELATIVE ChassisSpeeds.
+                () -> robotState.currentChassisSpeed, // ChassisSpeeds supplier. MUST BE ROBOT RELATIVE
+                (speeds) -> this.applyRequest(() -> 
+                    pathDrive.withVelocityX(speeds.vxMetersPerSecond)
+                    .withVelocityY(speeds.vyMetersPerSecond)
+                    .withRotationalRate(speeds.omegaRadiansPerSecond)),
                 new PPHolonomicDriveController( // PPHolonomicController is the built-in path following controller for holonomic drive trains
                     new PIDConstants(5.0, 0.001, 0.0), // Translation PID Constants
                     new PIDConstants(5.0, 0.001, 0.0) // Rotation PID Constants
@@ -188,16 +187,16 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
 
         // Constuct a kinematics object to do pose estimation
         try{
-            SwerveDrivePoseEstimator m_poseEstimation = new SwerveDrivePoseEstimator(
+            m_poseEstimation = new SwerveDrivePoseEstimator(
                 new SwerveDriveKinematics(
                     new Translation2d(0.19685, 0.2413), // Front Left Position in Meters
                     new Translation2d(0.19685, -0.2413), // Front Right Position in Meters
                     new Translation2d(-0.19685, 0.2413), // Back Left Position in Meters
                     new Translation2d(-0.19685, -0.2413) // Back Right Position in Meters
                 ),
-                swerveState.Pose.getRotation(), // Rotation of the robot
+                robotState.currentPose.getRotation(), // Rotation of the robot
                 swerveState.ModulePositions, // Array of module positions
-                swerveState.Pose // Starting robot pose (NEED TO UPDATE FOR VISION)
+                robotState.currentPose // Starting robot pose (NEED TO UPDATE FOR VISION)
             );
         } catch (Exception e) {
             e.printStackTrace();
